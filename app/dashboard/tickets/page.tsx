@@ -12,6 +12,11 @@ import {
   AlertTriangle,
   Activity,
 } from "lucide-react";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 import API from "@/lib/axios";
 
@@ -342,7 +347,46 @@ export default function TicketsPage() {
                         </Badge>
                       </TableCell>
 
-                      <TableCell>{ticket.problem_type}</TableCell>
+                      <TableCell>
+                        <HoverCard openDelay={150}>
+                          <HoverCardTrigger asChild>
+                            <div className="cursor-pointer font-medium hover:text-blue-600 transition">
+                              {ticket.problem_type}
+                            </div>
+                          </HoverCardTrigger>
+
+                          <HoverCardContent
+                            side="top"
+                            align="start"
+                            className="w-96 rounded-2xl border shadow-2xl p-4"
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <h4 className="font-semibold">
+                                  {ticket.problem_type}
+                                </h4>
+
+                                <Badge
+                                  className={`rounded-full border px-2 py-0.5 text-xs ${statusConfig[ticket.status]?.className}`}
+                                >
+                                  {ticket.status}
+                                </Badge>
+                              </div>
+
+                              <div className="rounded-xl bg-slate-50 p-3">
+                                <p className="text-xs text-slate-500 mb-2">
+                                  Problem Description
+                                </p>
+
+                                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                  {ticket.problem_description ||
+                                    "No description provided"}
+                                </p>
+                              </div>
+                            </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      </TableCell>
 
                       <TableCell>
                         <Badge
