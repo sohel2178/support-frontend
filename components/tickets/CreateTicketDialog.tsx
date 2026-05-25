@@ -105,23 +105,12 @@ export default function CreateTicketDialog({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
-            placeholder="Customer Name"
-            value={form.customer_name}
+            placeholder="Device ID *"
+            value={form.device_id}
             onChange={(e) =>
               setForm({
                 ...form,
-                customer_name: e.target.value,
-              })
-            }
-          />
-
-          <Input
-            placeholder="Vehicle Registration"
-            value={form.vehicle_reg}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                vehicle_reg: e.target.value,
+                device_id: e.target.value,
               })
             }
           />
@@ -133,17 +122,6 @@ export default function CreateTicketDialog({
               setForm({
                 ...form,
                 customer_phone: e.target.value,
-              })
-            }
-          />
-
-          <Input
-            placeholder="Device ID *"
-            value={form.device_id}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                device_id: e.target.value,
               })
             }
           />
@@ -208,7 +186,7 @@ export default function CreateTicketDialog({
           <div className="md:col-span-2">
             <Textarea
               placeholder="Problem Description *"
-              className="min-h-[140px]"
+              className="min-h-35"
               value={form.problem_description}
               onChange={(e) =>
                 setForm({
