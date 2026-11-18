@@ -1,25 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { motion } from "framer-motion";
-
+import Link from "next/link";
+import { motion } from "motion/react";
 import {
-  Ticket,
-  Clock3,
-  CheckCircle2,
-  AlertTriangle,
   Activity,
-  Users,
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Inbox,
+  Ticket as TicketIcon,
+  TrendingDown,
   TrendingUp,
+  Users,
 } from "lucide-react";
 
-import API from "@/lib/axios";
+import { API_URL } from "@/lib/config";
+import { PLATFORMS, PLATFORM_CONFIG, formatDate } from "@/lib/constants";
+import { useFetch } from "@/hooks/useFetch";
+import { useTicketEvents } from "@/hooks/useTicketEvents";
+import { useAuthStore } from "@/store/auth.store";
+import type { ApiResponse, TicketListResponse, TicketStats, User } from "@/types";
 
 import DashboardCard from "@/components/dashboard/DashboardCard";
-
+import BreakdownBars from "@/components/dashboard/BreakdownBars";
+import { PlatformBadge, PriorityBadge, StatusBadge } from "@/components/tickets/TicketBadges";
 import { Card } from "@/components/ui/card";
-
 import {
   Table,
   TableBody,
@@ -29,252 +36,141 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { Badge } from "@/components/ui/badge";
-
-import { useAuthStore } from "@/store/auth.store";
-
-export default function DashboardPage() {
-  const [tickets, setTickets] = useState<any[]>([]);
-
-  const [users, setUsers] = useState<any[]>([]);
-
-  const [loading, setLoading] = useState(true);
-
-  const { user } = useAuthStore();
-
-  const fetchDashboard = async () => {
-    try {
-      setLoading(true);
-
-      const requests: any = [API.get("/tickets")];
-
-      if (["ADMIN", "SUPERVISOR"].includes(user?.role)) {
-        requests.push(API.get("/users"));
-      }
-
-      const responses = await Promise.all(requests);
-
-      setTickets(responses[0]?.data?.tickets || []);
-
-      if (responses[1]) {
-        setUsers(responses[1]?.data?.data || []);
-      }
-    } catch (error) {
-      console.log(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+/** Polls the API health endpoint every 30s. */
+function useApiHealth() {
+  const [online, setOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (user) {
-      fetchDashboard();
-    }
-  }, [user]);
+    let active = true;
+    const check = () =>
+      fetch(`${API_URL}/`)
+        .then((r) => active && setOnline(r.ok))
+        .catch(() => active && setOnline(false));
 
-  const analytics = useMemo(() => {
-    return {
-      total: tickets?.length || 0,
-
-      pending: tickets.filter((x) => x.status === "PENDING").length,
-
-      inProgress: tickets.filter((x) => x.status === "IN_PROGRESS").length,
-
-      solved: tickets.filter((x) => x.status === "SOLVED").length,
-
-      urgent: tickets.filter((x) => x.priority === "URGENT").length,
-
-      activeUsers: users?.filter((x) => x.is_active).length || 0,
+    check();
+    const id = setInterval(check, 30_000);
+    return () => {
+      active = false;
+      clearInterval(id);
     };
-  }, [tickets, users]);
+  }, []);
 
-  const recentTickets = tickets.slice(0, 8);
+  return online;
+}
+
+export default function DashboardPage() {
+  const user = useAuthStore((s) => s.user);
+  const online = useApiHealth();
+
+  const statsQuery = useFetch<ApiResponse<TicketStats>>("/tickets/stats");
+  const recentQuery = useFetch<TicketListResponse>("/tickets", { limit: 8 });
+  const usersQuery = useFetch<ApiResponse<User[]>>("/users");
+
+  useTicketEvents(() => {
+    statsQuery.reload();
+    recentQuery.reload();
+  });
+
+  const stats = statsQuery.data?.data;
+  const recent = recentQuery.data?.tickets ?? [];
+  const users = usersQuery.data?.data ?? [];
+  const total = stats?.total ?? 0;
+  const pct = (n = 0) => (total ? (n / total) * 100 : 0);
 
   return (
-    <div className="h-full flex flex-col gap-4 overflow-hidden">
+    <div className="flex flex-col gap-4">
       <motion.div
-        initial={{
-          opacity: 0,
-          y: -20,
-        }}
-        animate={{
-          opacity: 1,
-          y: 0,
-        }}
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
         className="flex items-center justify-between"
       >
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-
-          <p className="text-slate-500 mt-1">
-            Welcome back, {user?.name}
-            👋
-          </p>
+          <p className="text-slate-500 mt-1">Welcome back, {user?.name} 👋</p>
         </div>
 
         <div className="hidden md:flex items-center gap-3 bg-white border shadow-sm rounded-2xl px-5 py-3">
-          <TrendingUp className="w-5 h-5 text-emerald-500" />
-
+          {online === false ? (
+            <TrendingDown className="w-5 h-5 text-red-500" />
+          ) : (
+            <TrendingUp className="w-5 h-5 text-emerald-500" />
+          )}
           <div>
             <p className="text-sm text-slate-500">System Status</p>
-
-            <h3 className="font-semibold text-emerald-600">Operational</h3>
+            <h3
+              className={`font-semibold ${
+                online === null ? "text-slate-400" : online ? "text-emerald-600" : "text-red-600"
+              }`}
+            >
+              {online === null ? "Checking..." : online ? "Operational" : "API unreachable"}
+            </h3>
           </div>
         </div>
       </motion.div>
 
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
-        <DashboardCard
-          title="Total Tickets"
-          value={String(analytics.total)}
-          icon={Ticket}
-        />
-
-        <DashboardCard
-          title="Pending"
-          value={String(analytics.pending)}
-          icon={Clock3}
-        />
-
-        <DashboardCard
-          title="In Progress"
-          value={String(analytics.inProgress)}
-          icon={Activity}
-        />
-
-        <DashboardCard
-          title="Solved"
-          value={String(analytics.solved)}
-          icon={CheckCircle2}
-        />
-
-        <DashboardCard
-          title="Urgent"
-          value={String(analytics.urgent)}
-          icon={AlertTriangle}
-        />
+        <DashboardCard title="Total Tickets" value={total} icon={TicketIcon} />
+        <DashboardCard title="Pending" value={stats?.byStatus.PENDING ?? 0} icon={Clock3} percent={pct(stats?.byStatus.PENDING)} hint={`${stats?.unassigned ?? 0} unassigned`} />
+        <DashboardCard title="In Progress" value={stats?.byStatus.IN_PROGRESS ?? 0} icon={Activity} percent={pct(stats?.byStatus.IN_PROGRESS)} />
+        <DashboardCard title="Solved" value={stats?.byStatus.SOLVED ?? 0} icon={CheckCircle2} percent={pct(stats?.byStatus.SOLVED)} />
+        <DashboardCard title="Urgent (open)" value={stats?.urgentOpen ?? 0} icon={AlertTriangle} percent={pct(stats?.urgentOpen)} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <motion.div
-          initial={{
-            opacity: 0,
-            y: 20,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-          className="xl:col-span-2"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="xl:col-span-2">
           <Card className="rounded-3xl border-0 shadow-xl p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-semibold">Recent Tickets</h2>
-
-                <p className="text-sm text-slate-500 mt-1">
-                  Latest support activities
-                </p>
+                <p className="text-sm text-slate-500 mt-1">Latest support activities</p>
               </div>
-
-              <div className="bg-slate-100 rounded-2xl p-3">
-                <Ticket className="w-5 h-5 text-slate-700" />
-              </div>
+              <Link href="/dashboard/tickets" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+                View all →
+              </Link>
             </div>
 
-            <div className="rounded-2xl border overflow-hidden">
+            <div className="rounded-2xl border overflow-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Ticket</TableHead>
-
                     <TableHead>Device</TableHead>
-
                     <TableHead>Platform</TableHead>
-
                     <TableHead>Status</TableHead>
-
                     <TableHead>Priority</TableHead>
+                    <TableHead>Created</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody>
-                  {loading ? (
+                  {recentQuery.loading && !recentQuery.data ? (
                     [...Array(5)].map((_, index) => (
                       <TableRow key={index}>
-                        <TableCell colSpan={5}>
-                          <div className="h-12 bg-slate-100 rounded-xl animate-pulse" />
+                        <TableCell colSpan={6}>
+                          <div className="h-10 bg-slate-100 rounded-xl animate-pulse" />
                         </TableCell>
                       </TableRow>
                     ))
-                  ) : recentTickets.length === 0 ? (
+                  ) : recent.length === 0 ? (
                     <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="text-center py-10 text-slate-500"
-                      >
+                      <TableCell colSpan={6} className="text-center py-10 text-slate-500">
                         No tickets found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    recentTickets.map((ticket, index) => (
-                      <motion.tr
-                        key={ticket._id}
-                        initial={{
-                          opacity: 0,
-                          y: 20,
-                        }}
-                        animate={{
-                          opacity: 1,
-                          y: 0,
-                        }}
-                        transition={{
-                          delay: index * 0.03,
-                        }}
-                        className="border-b hover:bg-slate-50 transition"
-                      >
-                        <TableCell className="font-medium py-4">
-                          {ticket.ticket_no}
+                    recent.map((ticket) => (
+                      <TableRow key={ticket._id} className="hover:bg-slate-50">
+                        <TableCell className="font-medium py-3">
+                          <Link href={`/dashboard/tickets/${ticket._id}`} className="hover:text-blue-600 hover:underline">
+                            {ticket.ticket_no}
+                          </Link>
                         </TableCell>
-
                         <TableCell>{ticket.device_id}</TableCell>
-
-                        <TableCell>
-                          <Badge className="rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                            {ticket.platform}
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell>
-                          <Badge
-                            className={`rounded-full ${
-                              ticket.status === "PENDING"
-                                ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
-                                : ticket.status === "IN_PROGRESS"
-                                  ? "bg-blue-100 text-blue-700 border border-blue-200"
-                                  : ticket.status === "SOLVED"
-                                    ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                                    : "bg-slate-100 text-slate-700 border border-slate-200"
-                            }`}
-                          >
-                            {ticket.status}
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell>
-                          <Badge
-                            className={`rounded-full ${
-                              ticket.priority === "URGENT"
-                                ? "bg-red-100 text-red-700 border border-red-200"
-                                : ticket.priority === "HIGH"
-                                  ? "bg-orange-100 text-orange-700 border border-orange-200"
-                                  : "bg-slate-100 text-slate-700 border border-slate-200"
-                            }`}
-                          >
-                            {ticket.priority}
-                          </Badge>
-                        </TableCell>
-                      </motion.tr>
+                        <TableCell><PlatformBadge platform={ticket.platform} /></TableCell>
+                        <TableCell><StatusBadge status={ticket.status} /></TableCell>
+                        <TableCell><PriorityBadge priority={ticket.priority} /></TableCell>
+                        <TableCell className="text-sm text-slate-500 whitespace-nowrap">{formatDate(ticket.createdAt)}</TableCell>
+                      </TableRow>
                     ))
                   )}
                 </TableBody>
@@ -283,69 +179,40 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
-        <motion.div
-          initial={{
-            opacity: 0,
-            y: 20,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-          className="space-y-4 overflow-auto"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
           <Card className="rounded-3xl border-0 shadow-xl p-6">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h2 className="text-2xl font-semibold">Team</h2>
-
                 <p className="text-sm text-slate-500 mt-1">Support members</p>
               </div>
-
               <div className="bg-slate-100 rounded-2xl p-3">
                 <Users className="w-5 h-5 text-slate-700" />
               </div>
             </div>
 
-            <div className="space-y-4">
-              <TeamStat title="Active Users" value={analytics.activeUsers} />
-
-              <TeamStat
-                title="Admins"
-                value={users.filter((x) => x.role === "ADMIN").length}
-              />
-
-              <TeamStat
-                title="Technical"
-                value={users.filter((x) => x.role === "TECHNICAL").length}
-              />
-
-              <TeamStat
-                title="Customer Care"
-                value={users.filter((x) => x.role === "CUSTOMER_CARE").length}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <TeamStat title="Active" value={users.filter((x) => x.is_active).length} />
+              <TeamStat title="Technical" value={users.filter((x) => x.role === "TECHNICAL").length} />
+              <TeamStat title="Customer Care" value={users.filter((x) => x.role === "CUSTOMER_CARE").length} />
+              <TeamStat title="Supervisors" value={users.filter((x) => x.role === "SUPERVISOR").length} />
             </div>
           </Card>
 
           <Card className="rounded-3xl border-0 shadow-xl p-6">
-            <h2 className="text-2xl font-semibold mb-5">Platforms</h2>
-
-            <div className="space-y-4">
-              <PlatformItem
-                title="TIKTIKI"
-                count={tickets.filter((x) => x.platform === "TIKTIKI").length}
-              />
-
-              <PlatformItem
-                title="RETAIL"
-                count={tickets.filter((x) => x.platform === "RETAIL").length}
-              />
-
-              <PlatformItem
-                title="RANGS"
-                count={tickets.filter((x) => x.platform === "RANGS").length}
-              />
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-2xl font-semibold">Platforms</h2>
+              <Inbox className="w-5 h-5 text-slate-500" />
             </div>
+            <BreakdownBars
+              total={total}
+              rows={PLATFORMS.map((p) => ({
+                key: p,
+                label: PLATFORM_CONFIG[p].label,
+                value: stats?.byPlatform[p] ?? 0,
+                bar: PLATFORM_CONFIG[p].bar,
+              }))}
+            />
           </Card>
         </motion.div>
       </div>
@@ -353,40 +220,11 @@ export default function DashboardPage() {
   );
 }
 
-function TeamStat({
-  title,
-  value,
-}: {
-  title: string;
-
-  value: number;
-}) {
+function TeamStat({ title, value }: { title: string; value: number }) {
   return (
-    <div className="flex items-center justify-between border rounded-2xl p-4">
-      <p className="text-slate-600">{title}</p>
-
-      <h3 className="text-2xl font-bold">{value}</h3>
-    </div>
-  );
-}
-
-function PlatformItem({
-  title,
-  count,
-}: {
-  title: string;
-
-  count: number;
-}) {
-  return (
-    <div className="flex items-center justify-between bg-slate-50 rounded-2xl border p-4">
-      <div>
-        <p className="font-semibold">{title}</p>
-
-        <p className="text-sm text-slate-500">Tickets</p>
-      </div>
-
-      <h2 className="text-3xl font-bold">{count}</h2>
+    <div className="border rounded-2xl p-4">
+      <p className="text-sm text-slate-500">{title}</p>
+      <h3 className="text-2xl font-bold mt-1">{value}</h3>
     </div>
   );
 }

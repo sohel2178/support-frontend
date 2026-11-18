@@ -2,92 +2,93 @@
 
 import { useState } from "react";
 
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
+import { AlertCircle, Loader2 } from "lucide-react";
 
-import API from "@/lib/axios";
-
-import { useRouter } from "next/navigation";
-
+import API, { getErrorMessage } from "@/lib/axios";
 import { useAuthStore } from "@/store/auth.store";
+import type { ApiResponse, User } from "@/types";
 
 import { Card } from "@/components/ui/card";
-
 import { Button } from "@/components/ui/button";
-
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
 
 export default function LoginPage() {
-  const router = useRouter();
-
-  const { setAuth } = useAuthStore();
+  const setAuth = useAuthStore((s) => s.setAuth);
 
   const [username, setUsername] = useState("");
-
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleLogin = async () => {
+  // On success AuthProvider redirects to the role's landing page.
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!username.trim() || !password) {
+      setError("Enter your username and password");
+      return;
+    }
+
     try {
-      const res = await API.post("/auth/login", {
-        username,
+      setLoading(true);
+      setError("");
+
+      const res = await API.post<ApiResponse<{ user: User; token: string }>>("/auth/login", {
+        username: username.trim(),
         password,
       });
 
-      const user = res.data.data.user;
-
-      const token = res.data.data.token;
-
-      setAuth(user, token);
-
-      switch (user.role) {
-        case "ADMIN":
-          router.push("/dashboard");
-          break;
-
-        case "SUPERVISOR":
-          router.push("/dashboard");
-          break;
-
-        case "CUSTOMER_CARE":
-          router.push("/dashboard/tickets");
-          break;
-
-        case "TECHNICAL":
-          router.push("/dashboard/tickets");
-          break;
-
-        default:
-          router.push("/login");
-      }
-    } catch (error) {
-      console.log(error);
+      setAuth(res.data.data.user, res.data.data.token);
+    } catch (err) {
+      setError(getErrorMessage(err, "Login failed"));
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex h-screen items-center justify-center">
-      <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <Card className="w-[400px] p-6 space-y-4 rounded-3xl shadow-2xl">
-          <h1 className="text-3xl font-bold text-center">GPS Support Login</h1>
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
+      <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-100">
+        <Card className="p-6 rounded-3xl shadow-2xl border-0">
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="text-center space-y-1">
+              <h1 className="text-3xl font-bold">GPS Support</h1>
+              <p className="text-sm text-slate-500">Sign in to your account</p>
+            </div>
 
-          <Input
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
+            {error && (
+              <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {error}
+              </div>
+            )}
 
-          <Input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+            <Field label="Username" htmlFor="username">
+              <Input
+                id="username"
+                autoComplete="username"
+                autoFocus
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </Field>
 
-          <Button className="w-full" onClick={handleLogin}>
-            Login
-          </Button>
+            <Field label="Password" htmlFor="password">
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
+
+            <Button type="submit" className="w-full h-10" disabled={loading}>
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading ? "Signing in..." : "Login"}
+            </Button>
+          </form>
         </Card>
       </motion.div>
     </div>

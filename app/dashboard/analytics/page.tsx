@@ -1,22 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
+import { Gauge, Layers, ShieldAlert, Wrench } from "lucide-react";
 
 import {
-  Ticket,
-  Clock3,
-  CheckCircle2,
-  AlertTriangle,
-  Users,
-  Activity,
-} from "lucide-react";
+  PLATFORMS,
+  PLATFORM_CONFIG,
+  PRIORITIES,
+  PRIORITY_CONFIG,
+  STATUSES,
+  STATUS_CONFIG,
+} from "@/lib/constants";
+import { useFetch } from "@/hooks/useFetch";
+import { useTicketEvents } from "@/hooks/useTicketEvents";
+import type { ApiResponse, TicketStats } from "@/types";
 
-import API from "@/lib/axios";
-
+import DashboardCard from "@/components/dashboard/DashboardCard";
+import BreakdownBars from "@/components/dashboard/BreakdownBars";
 import { Card } from "@/components/ui/card";
-
 import {
   Table,
   TableBody,
@@ -26,377 +27,122 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { Badge } from "@/components/ui/badge";
-
 export default function AnalyticsPage() {
-  const [tickets, setTickets] = useState<any[]>([]);
+  const statsQuery = useFetch<ApiResponse<TicketStats>>("/tickets/stats");
+  useTicketEvents(() => statsQuery.reload());
 
-  const [users, setUsers] = useState<any[]>([]);
+  const stats = statsQuery.data?.data;
+  const total = stats?.total ?? 0;
+  const resolved = (stats?.byStatus.SOLVED ?? 0) + (stats?.byStatus.CLOSED ?? 0);
+  const open = (stats?.byStatus.PENDING ?? 0) + (stats?.byStatus.IN_PROGRESS ?? 0);
+  const resolutionRate = total ? Math.round((resolved / total) * 100) : 0;
+  const technicians = stats?.byTechnician ?? [];
 
-  const [loading, setLoading] = useState(true);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-
-      const [ticketRes, userRes] = await Promise.all([
-        API.get("/tickets"),
-
-        API.get("/users"),
-      ]);
-
-      setTickets(ticketRes.data.data);
-
-      setUsers(userRes.data.data);
-    } catch (error) {
-      console.log(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const analytics = useMemo(() => {
-    const totalTickets = tickets.length;
-
-    const pendingTickets = tickets.filter((x) => x.status === "PENDING").length;
-
-    const inProgressTickets = tickets.filter(
-      (x) => x.status === "IN_PROGRESS",
-    ).length;
-
-    const solvedTickets = tickets.filter((x) => x.status === "SOLVED").length;
-
-    const urgentTickets = tickets.filter((x) => x.priority === "URGENT").length;
-
-    const activeUsers = users.filter((x) => x.is_active).length;
-
-    const technicalUsers = users.filter((x) => x.role === "TECHNICAL").length;
-
-    const customerCareUsers = users.filter(
-      (x) => x.role === "CUSTOMER_CARE",
-    ).length;
-
-    const platformStats = {
-      TIKTIKI: tickets.filter((x) => x.platform === "TIKTIKI").length,
-
-      RETAIL: tickets.filter((x) => x.platform === "RETAIL").length,
-
-      RANGS: tickets.filter((x) => x.platform === "RANGS").length,
-    };
-
-    return {
-      totalTickets,
-
-      pendingTickets,
-
-      inProgressTickets,
-
-      solvedTickets,
-
-      urgentTickets,
-
-      activeUsers,
-
-      technicalUsers,
-
-      customerCareUsers,
-
-      platformStats,
-    };
-  }, [tickets, users]);
-
-  const recentTickets = tickets.slice(0, 10);
+  if (statsQuery.error && !stats) {
+    return (
+      <Card className="rounded-3xl border-0 shadow-xl p-10 text-center text-slate-600">
+        {statsQuery.error}
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <motion.div
-        initial={{
-          opacity: 0,
-          y: -20,
-        }}
-        animate={{
-          opacity: 1,
-          y: 0,
-        }}
-      >
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-4xl font-bold tracking-tight">Analytics</h1>
-
-        <p className="text-slate-500 mt-2 text-lg">
-          Enterprise support system overview
-        </p>
+        <p className="text-slate-500 mt-1">Ticket breakdowns and team performance</p>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatsCard
-          title="Total Tickets"
-          value={analytics.totalTickets}
-          icon={Ticket}
-        />
-
-        <StatsCard
-          title="Pending"
-          value={analytics.pendingTickets}
-          icon={Clock3}
-        />
-
-        <StatsCard
-          title="In Progress"
-          value={analytics.inProgressTickets}
-          icon={Activity}
-        />
-
-        <StatsCard
-          title="Solved"
-          value={analytics.solvedTickets}
-          icon={CheckCircle2}
-        />
-
-        <StatsCard
-          title="Urgent"
-          value={analytics.urgentTickets}
-          icon={AlertTriangle}
-        />
-
-        <StatsCard
-          title="Active Users"
-          value={analytics.activeUsers}
-          icon={Users}
-        />
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <DashboardCard title="Resolution Rate" value={`${resolutionRate}%`} icon={Gauge} percent={resolutionRate} hint={`${resolved} of ${total} resolved`} />
+        <DashboardCard title="Open Tickets" value={open} icon={Layers} percent={total ? (open / total) * 100 : 0} />
+        <DashboardCard title="Urgent (open)" value={stats?.urgentOpen ?? 0} icon={ShieldAlert} percent={open ? ((stats?.urgentOpen ?? 0) / open) * 100 : 0} hint="share of open tickets" />
+        <DashboardCard title="Unassigned" value={stats?.unassigned ?? 0} icon={Wrench} percent={open ? ((stats?.unassigned ?? 0) / open) * 100 : 0} hint="pending, no technician" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <motion.div
-          initial={{
-            opacity: 0,
-            y: 20,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-          className="lg:col-span-2"
-        >
-          <Card className="rounded-3xl border-0 shadow-xl p-6">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold">Recent Tickets</h2>
+        <BreakdownCard title="By Status" total={total}
+          rows={STATUSES.map((s) => ({ key: s, label: STATUS_CONFIG[s].label, value: stats?.byStatus[s] ?? 0, bar: STATUS_CONFIG[s].bar }))} />
+        <BreakdownCard title="By Priority" total={total}
+          rows={PRIORITIES.map((p) => ({ key: p, label: PRIORITY_CONFIG[p].label, value: stats?.byPriority[p] ?? 0, bar: PRIORITY_CONFIG[p].bar }))} />
+        <BreakdownCard title="By Platform" total={total}
+          rows={PLATFORMS.map((p) => ({ key: p, label: PLATFORM_CONFIG[p].label, value: stats?.byPlatform[p] ?? 0, bar: PLATFORM_CONFIG[p].bar }))} />
+      </div>
 
-              <p className="text-sm text-slate-500 mt-1">
-                Latest support activities
-              </p>
-            </div>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <Card className="rounded-3xl border-0 shadow-xl p-6">
+          <h2 className="text-2xl font-semibold">Technician Performance</h2>
+          <p className="text-sm text-slate-500 mt-1 mb-5">Tickets assigned to each technician</p>
 
-            <div className="rounded-2xl border overflow-hidden">
-              <Table>
-                <TableHeader>
+          <div className="rounded-2xl border overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Technician</TableHead>
+                  <TableHead className="text-right">Assigned</TableHead>
+                  <TableHead className="text-right">In Progress</TableHead>
+                  <TableHead className="text-right">Resolved</TableHead>
+                  <TableHead className="w-1/3">Resolution</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {statsQuery.loading && !stats ? (
                   <TableRow>
-                    <TableHead>Ticket</TableHead>
-
-                    <TableHead>Device</TableHead>
-
-                    <TableHead>Platform</TableHead>
-
-                    <TableHead>Priority</TableHead>
-
-                    <TableHead>Status</TableHead>
+                    <TableCell colSpan={5}>
+                      <div className="h-10 rounded-xl bg-slate-100 animate-pulse" />
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-
-                <TableBody>
-                  {loading ? (
-                    [...Array(5)].map((_, index) => (
-                      <TableRow key={index}>
-                        <TableCell colSpan={5}>
-                          <div className="h-12 bg-slate-100 rounded-xl animate-pulse" />
+                ) : technicians.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-10 text-slate-500">
+                      No tickets have been assigned yet
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  technicians.map((t) => {
+                    const rate = t.assigned ? Math.round((t.solved / t.assigned) * 100) : 0;
+                    return (
+                      <TableRow key={t._id}>
+                        <TableCell className="font-medium">{t.name}</TableCell>
+                        <TableCell className="text-right tabular-nums">{t.assigned}</TableCell>
+                        <TableCell className="text-right tabular-nums">{t.open}</TableCell>
+                        <TableCell className="text-right tabular-nums">{t.solved}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-2 flex-1 rounded-full bg-slate-100 overflow-hidden">
+                              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${rate}%` }} />
+                            </div>
+                            <span className="text-sm text-slate-500 w-10 text-right tabular-nums">{rate}%</span>
+                          </div>
                         </TableCell>
                       </TableRow>
-                    ))
-                  ) : recentTickets.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="text-center py-10 text-slate-500"
-                      >
-                        No tickets found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    recentTickets.map((ticket, index) => (
-                      <motion.tr
-                        key={ticket._id}
-                        initial={{
-                          opacity: 0,
-                          y: 20,
-                        }}
-                        animate={{
-                          opacity: 1,
-                          y: 0,
-                        }}
-                        transition={{
-                          delay: index * 0.03,
-                        }}
-                        className="border-b hover:bg-slate-50 transition"
-                      >
-                        <TableCell className="font-medium py-4">
-                          {ticket.ticket_no}
-                        </TableCell>
-
-                        <TableCell>{ticket.device_id}</TableCell>
-
-                        <TableCell>
-                          <Badge className="rounded-full">
-                            {ticket.platform}
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell>
-                          <Badge variant="outline" className="rounded-full">
-                            {ticket.priority}
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell>
-                          <Badge className="rounded-full">
-                            {ticket.status}
-                          </Badge>
-                        </TableCell>
-                      </motion.tr>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{
-            opacity: 0,
-            y: 20,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-        >
-          <Card className="rounded-3xl border-0 shadow-xl p-6">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold">Platforms</h2>
-
-              <p className="text-sm text-slate-500 mt-1">Ticket distribution</p>
-            </div>
-
-            <div className="space-y-5">
-              <PlatformCard
-                name="TIKTIKI"
-                value={analytics.platformStats.TIKTIKI}
-              />
-
-              <PlatformCard
-                name="RETAIL"
-                value={analytics.platformStats.RETAIL}
-              />
-
-              <PlatformCard
-                name="RANGS"
-                value={analytics.platformStats.RANGS}
-              />
-            </div>
-
-            <div className="border-t mt-6 pt-6 space-y-4">
-              <MiniStat
-                title="Technical Team"
-                value={analytics.technicalUsers}
-              />
-
-              <MiniStat
-                title="Customer Care"
-                value={analytics.customerCareUsers}
-              />
-            </div>
-          </Card>
-        </motion.div>
-      </div>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      </motion.div>
     </div>
   );
 }
 
-function StatsCard({
+function BreakdownCard({
   title,
-  value,
-  icon: Icon,
+  total,
+  rows,
 }: {
   title: string;
-
-  value: number;
-
-  icon: any;
+  total: number;
+  rows: { key: string; label: string; value: number; bar: string }[];
 }) {
   return (
-    <motion.div
-      initial={{
-        opacity: 0,
-        y: 20,
-      }}
-      animate={{
-        opacity: 1,
-        y: 0,
-      }}
-    >
-      <Card className="rounded-3xl border-0 shadow-lg p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-slate-500">{title}</p>
-
-            <h1 className="text-4xl font-bold mt-2">{value}</h1>
-          </div>
-
-          <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center">
-            <Icon className="h-6 w-6 text-slate-700" />
-          </div>
-        </div>
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+      <Card className="rounded-3xl border-0 shadow-xl p-6 h-full">
+        <h2 className="text-xl font-semibold mb-5">{title}</h2>
+        <BreakdownBars rows={rows} total={total} />
       </Card>
     </motion.div>
-  );
-}
-
-function PlatformCard({
-  name,
-  value,
-}: {
-  name: string;
-
-  value: number;
-}) {
-  return (
-    <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border">
-      <div>
-        <p className="font-semibold">{name}</p>
-
-        <p className="text-sm text-slate-500">Tickets</p>
-      </div>
-
-      <h1 className="text-3xl font-bold">{value}</h1>
-    </div>
-  );
-}
-
-function MiniStat({
-  title,
-  value,
-}: {
-  title: string;
-
-  value: number;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <p className="text-slate-600">{title}</p>
-
-      <h2 className="text-2xl font-bold">{value}</h2>
-    </div>
   );
 }

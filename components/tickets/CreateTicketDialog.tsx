@@ -3,8 +3,9 @@
 import { useState } from "react";
 
 import { Plus } from "lucide-react";
+import { toast } from "sonner";
 
-import API from "@/lib/axios";
+import API, { getErrorMessage } from "@/lib/axios";
 
 import {
   Dialog,
@@ -13,84 +14,51 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-
 import { Button } from "@/components/ui/button";
-
-import { Input } from "@/components/ui/input";
-
-import { Textarea } from "@/components/ui/textarea";
-
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  TicketForm,
+  emptyTicketForm,
+  validateTicketForm,
+  type TicketFormErrors,
+  type TicketFormValues,
+} from "@/components/tickets/TicketForm";
 
-export default function CreateTicketDialog({
-  onSuccess,
-}: {
-  onSuccess: () => void;
-}) {
+export default function CreateTicketDialog({ onSuccess }: { onSuccess: () => void }) {
   const [open, setOpen] = useState(false);
-
   const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState<TicketFormValues>(emptyTicketForm);
+  const [errors, setErrors] = useState<TicketFormErrors>({});
 
-  const [form, setForm] = useState({
-    customer_name: "",
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (next) {
+      setForm(emptyTicketForm);
+      setErrors({});
+    }
+  };
 
-    vehicle_reg: "",
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    customer_phone: "",
+    const found = validateTicketForm(form);
+    setErrors(found);
+    if (Object.keys(found).length) return;
 
-    device_id: "",
-
-    problem_type: "",
-
-    problem_description: "",
-
-    platform: "TIKTIKI",
-
-    priority: "MEDIUM",
-  });
-
-  const handleSubmit = async () => {
     try {
       setLoading(true);
-
-      await API.post("/tickets", form);
-
+      const res = await API.post("/tickets", form);
+      toast.success(`Ticket ${res.data.data.ticket_no} created`);
       setOpen(false);
-
-      setForm({
-        customer_name: "",
-
-        vehicle_reg: "",
-
-        customer_phone: "",
-
-        device_id: "",
-
-        problem_type: "",
-
-        problem_description: "",
-
-        platform: "TIKTIKI",
-
-        priority: "MEDIUM",
-      });
-
       onSuccess();
     } catch (error) {
-      console.log(error);
+      toast.error(getErrorMessage(error, "Failed to create ticket"));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button className="h-11 px-6 rounded-2xl shadow-md text-base font-semibold">
           <Plus className="w-4 h-4 mr-2" />
@@ -98,115 +66,22 @@ export default function CreateTicketDialog({
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-3xl rounded-3xl">
+      <DialogContent className="sm:max-w-3xl rounded-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">Create Ticket</DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            placeholder="Device ID *"
-            value={form.device_id}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                device_id: e.target.value,
-              })
-            }
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <TicketForm
+            values={form}
+            errors={errors}
+            onChange={(key, value) => setForm((f) => ({ ...f, [key]: value }))}
           />
 
-          <Input
-            placeholder="Customer Phone *"
-            value={form.customer_phone}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                customer_phone: e.target.value,
-              })
-            }
-          />
-
-          <Input
-            placeholder="Problem Type *"
-            value={form.problem_type}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                problem_type: e.target.value,
-              })
-            }
-          />
-
-          <Select
-            value={form.platform}
-            onValueChange={(value) =>
-              setForm({
-                ...form,
-                platform: value,
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Platform" />
-            </SelectTrigger>
-
-            <SelectContent>
-              <SelectItem value="TIKTIKI">TIKTIKI</SelectItem>
-
-              <SelectItem value="RETAIL">RETAIL</SelectItem>
-
-              <SelectItem value="RANGS">RANGS</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={form.priority}
-            onValueChange={(value) =>
-              setForm({
-                ...form,
-                priority: value,
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Priority" />
-            </SelectTrigger>
-
-            <SelectContent>
-              <SelectItem value="LOW">LOW</SelectItem>
-
-              <SelectItem value="MEDIUM">MEDIUM</SelectItem>
-
-              <SelectItem value="HIGH">HIGH</SelectItem>
-
-              <SelectItem value="URGENT">URGENT</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div className="md:col-span-2">
-            <Textarea
-              placeholder="Problem Description *"
-              className="min-h-35"
-              value={form.problem_description}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  problem_description: e.target.value,
-                })
-              }
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <Button
-              className="w-full h-11 rounded-2xl"
-              disabled={loading}
-              onClick={handleSubmit}
-            >
-              {loading ? "Creating..." : "Create Ticket"}
-            </Button>
-          </div>
-        </div>
+          <Button type="submit" className="w-full h-11 rounded-2xl" disabled={loading}>
+            {loading ? "Creating..." : "Create Ticket"}
+          </Button>
+        </form>
       </DialogContent>
     </Dialog>
   );

@@ -2,220 +2,105 @@
 
 import { useState } from "react";
 
-import API from "@/lib/axios";
+import { toast } from "sonner";
+
+import API, { getErrorMessage } from "@/lib/axios";
+import type { Ticket } from "@/types";
 
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-
 import { Button } from "@/components/ui/button";
-
-import { Input } from "@/components/ui/input";
-
-import { Textarea } from "@/components/ui/textarea";
-
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  TicketForm,
+  ticketToForm,
+  validateTicketForm,
+  type TicketFormErrors,
+  type TicketFormValues,
+} from "@/components/tickets/TicketForm";
 
-export default function EditTicketDialog({
-  ticket,
-  onSuccess,
-}: {
-  ticket: any;
-
+interface Props {
+  ticket: Ticket | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
-}) {
-  const [open, setOpen] = useState(false);
+}
 
+export default function EditTicketDialog({ ticket, open, onOpenChange, onSuccess }: Props) {
+  return (
+    <Dialog open={open && !!ticket} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl rounded-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-2xl">Edit Ticket</DialogTitle>
+          <DialogDescription>{ticket?.ticket_no}</DialogDescription>
+        </DialogHeader>
+
+        {/* Keyed so the form re-initialises from the latest ticket each time it opens. */}
+        {ticket && open && (
+          <EditForm
+            key={`${ticket._id}-${ticket.updatedAt}`}
+            ticket={ticket}
+            onDone={() => {
+              onOpenChange(false);
+              onSuccess();
+            }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditForm({ ticket, onDone }: { ticket: Ticket; onDone: () => void }) {
+  const [form, setForm] = useState<TicketFormValues>(() => ticketToForm(ticket));
+  const [errors, setErrors] = useState<TicketFormErrors>({});
   const [loading, setLoading] = useState(false);
 
-  const [form, setForm] = useState({
-    customer_name: ticket.customer_name || "",
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    vehicle_reg: ticket.vehicle_reg || "",
+    const found = validateTicketForm(form);
+    setErrors(found);
+    if (Object.keys(found).length) return;
 
-    customer_phone: ticket.customer_phone || "",
+    // Only send changed fields.
+    const original = ticketToForm(ticket);
+    const changes = Object.fromEntries(
+      Object.entries(form).filter(([k, v]) => original[k as keyof TicketFormValues] !== v),
+    );
 
-    device_id: ticket.device_id || "",
+    if (Object.keys(changes).length === 0) {
+      onDone();
+      return;
+    }
 
-    problem_type: ticket.problem_type || "",
-
-    problem_description: ticket.problem_description || "",
-
-    platform: ticket.platform || "TIKTIKI",
-
-    priority: ticket.priority || "MEDIUM",
-
-    status: ticket.status || "PENDING",
-  });
-
-  const handleUpdate = async () => {
     try {
       setLoading(true);
-
-      await API.patch(`/tickets/${ticket._id}`, form);
-
-      setOpen(false);
-
-      onSuccess();
+      await API.patch(`/tickets/${ticket._id}`, changes);
+      toast.success("Ticket updated");
+      onDone();
     } catch (error) {
-      console.log(error);
+      toast.error(getErrorMessage(error, "Failed to update ticket"));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="rounded-xl">
-          Edit
-        </Button>
-      </DialogTrigger>
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <TicketForm
+        values={form}
+        errors={errors}
+        onChange={(key, value) => setForm((f) => ({ ...f, [key]: value }))}
+      />
 
-      <DialogContent className="max-w-3xl rounded-3xl">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Edit Ticket</DialogTitle>
-        </DialogHeader>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            placeholder="Device ID"
-            value={form.device_id}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                device_id: e.target.value,
-              })
-            }
-          />
-
-          <Input
-            placeholder="Customer Phone"
-            value={form.customer_phone}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                customer_phone: e.target.value,
-              })
-            }
-          />
-
-          <Input
-            placeholder="Problem Type"
-            value={form.problem_type}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                problem_type: e.target.value,
-              })
-            }
-          />
-
-          <Select
-            value={form.platform}
-            onValueChange={(value) =>
-              setForm({
-                ...form,
-                platform: value,
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-
-            <SelectContent>
-              <SelectItem value="TIKTIKI">TIKTIKI</SelectItem>
-
-              <SelectItem value="RETAIL">RETAIL</SelectItem>
-
-              <SelectItem value="RANGS">RANGS</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={form.priority}
-            onValueChange={(value) =>
-              setForm({
-                ...form,
-                priority: value,
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-
-            <SelectContent>
-              <SelectItem value="LOW">LOW</SelectItem>
-
-              <SelectItem value="MEDIUM">MEDIUM</SelectItem>
-
-              <SelectItem value="HIGH">HIGH</SelectItem>
-
-              <SelectItem value="URGENT">URGENT</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={form.status}
-            onValueChange={(value) =>
-              setForm({
-                ...form,
-                status: value,
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-
-            <SelectContent>
-              <SelectItem value="PENDING">PENDING</SelectItem>
-
-              <SelectItem value="IN_PROGRESS">IN_PROGRESS</SelectItem>
-
-              <SelectItem value="SOLVED">SOLVED</SelectItem>
-
-              <SelectItem value="CLOSED">CLOSED</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div className="md:col-span-2">
-            <Textarea
-              className="min-h-[140px]"
-              placeholder="Problem Description"
-              value={form.problem_description}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  problem_description: e.target.value,
-                })
-              }
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <Button
-              className="w-full h-11 rounded-2xl"
-              disabled={loading}
-              onClick={handleUpdate}
-            >
-              {loading ? "Updating..." : "Update Ticket"}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+      <Button type="submit" className="w-full h-11 rounded-2xl" disabled={loading}>
+        {loading ? "Saving..." : "Save Changes"}
+      </Button>
+    </form>
   );
 }
