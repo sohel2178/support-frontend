@@ -33,6 +33,7 @@ import type { ApiResponse, Ticket, TicketListResponse, TicketStats } from "@/typ
 
 import CreateTicketDialog from "@/components/tickets/CreateTicketDialog";
 import TicketActions from "@/components/tickets/TicketActions";
+import TimelineHoverCard from "@/components/tickets/TimelineHoverCard";
 import { PlatformBadge, PriorityBadge, StatusBadge } from "@/components/tickets/TicketBadges";
 import DashboardCard from "@/components/dashboard/DashboardCard";
 import { Card } from "@/components/ui/card";
@@ -286,7 +287,11 @@ export default function TicketsPage() {
                       </TableCell>
 
                       <TableCell>
-                        <StatusBadge status={ticket.status} />
+                        {ticket.status === "IN_PROGRESS" ? (
+                          <TimelineHoverCard ticket={ticket} />
+                        ) : (
+                          <StatusBadge status={ticket.status} />
+                        )}
                       </TableCell>
 
                       <TableCell>

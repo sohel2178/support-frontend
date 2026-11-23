@@ -6,15 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  ArrowRightLeft,
-  Info,
-  MessageSquare,
-  Send,
-  UserPlus,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowLeft, Send } from "lucide-react";
 
 import API, { getErrorMessage } from "@/lib/axios";
 import { getSocket } from "@/lib/socket";
@@ -22,20 +14,15 @@ import { formatDate } from "@/lib/constants";
 import { useFetch } from "@/hooks/useFetch";
 import { useTicketEvents } from "@/hooks/useTicketEvents";
 import { useAuthStore } from "@/store/auth.store";
-import type { ApiResponse, Ticket, TimelineEntry, TimelineType } from "@/types";
+import type { ApiResponse, Ticket, TimelineEntry } from "@/types";
 
 import TicketActions from "@/components/tickets/TicketActions";
+import TimelineList from "@/components/tickets/TimelineList";
 import { PlatformBadge, PriorityBadge, StatusBadge } from "@/components/tickets/TicketBadges";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
-const TIMELINE_STYLE: Record<TimelineType, { icon: LucideIcon; className: string }> = {
-  COMMENT: { icon: MessageSquare, className: "bg-blue-100 text-blue-700" },
-  STATUS_CHANGE: { icon: ArrowRightLeft, className: "bg-emerald-100 text-emerald-700" },
-  ASSIGN: { icon: UserPlus, className: "bg-amber-100 text-amber-700" },
-  SYSTEM: { icon: Info, className: "bg-slate-100 text-slate-600" },
-};
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -185,37 +172,7 @@ export default function TicketDetailPage() {
                 ))}
               </div>
             ) : (
-              <ol className="relative space-y-5 before:absolute before:left-4 before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
-                {timeline.map((entry) => {
-                  const style = TIMELINE_STYLE[entry.type] ?? TIMELINE_STYLE.SYSTEM;
-                  const Icon = style.icon;
-                  const mine = entry.created_by?._id === user?._id;
-
-                  return (
-                    <li key={entry._id} className="relative flex gap-4">
-                      <div className={`relative z-10 h-8 w-8 shrink-0 rounded-full flex items-center justify-center ${style.className}`}>
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                          <span className="font-medium">
-                            {entry.created_by?.name ?? "System"}
-                            {mine && <span className="text-slate-400 font-normal"> (you)</span>}
-                          </span>
-                          <span className="text-xs text-slate-400">{formatDate(entry.createdAt)}</span>
-                        </div>
-                        {entry.type === "COMMENT" ? (
-                          <p className="mt-1 rounded-2xl bg-slate-50 border px-4 py-2 text-sm text-slate-700 whitespace-pre-wrap">
-                            {entry.message}
-                          </p>
-                        ) : (
-                          <p className="text-sm text-slate-600">{entry.message}</p>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
+              <TimelineList entries={timeline} currentUserId={user?._id} />
             )}
 
             <CommentBox ticketId={ticket._id} onPosted={timelineQuery.reload} />
